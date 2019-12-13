@@ -1,1 +1,4 @@
-__pycache__/**
+__pycache__/
+.snakemake/
+taxdump/
+nucl_*
