@@ -1,19 +1,19 @@
 #! /usr/bin/env python
 """
-Take a GATHER OUTPUT file [full of accessions] and one or more NCBI 'accession2taxid' files
-and create a CSV named 'gather_csv.taxid' that contains the accessions
-and their associated taxids.
+Take a gather CSV and one or more NCBI 'accession2taxid' files
+and create 1) csv containing accessions, taxid, and 2) csv with linage, %
+run:
+python gather-to-opal.py example_output.csv --acc2taxid_files nucl_gb.accession2taxid.gz nucl_wgs.accession2taxid.gz
 """
 
 from __future__ import print_function
-import argparse
-import gzip
 import re
+import os
+import gzip
+import argparse
 import pandas as pd
 
-import sys
-import csv
-
+import taxonomy
 import ncbi_taxdump_utils
 
 def get_taxid(gather_csv, acc2taxid_files):
@@ -21,11 +21,12 @@ def get_taxid(gather_csv, acc2taxid_files):
     gather_info = pd.read_csv(gather_csv)
     # grab the acc from gather column `name`
     gather_info["accession"] = gather_info["name"].str.replace("\s.*", "")
+    gather_info["percentage"] = gather_info["f_unique_weighted"]*100
     m = 0
     # init opal_info df
-    opal_info = gather_info[["accession", "f_unique_weighted"]]
-    opal_info.set_index("accession")
-    acc_set = set(opal_info["accession"])
+    opal_info = gather_info.loc[:, ["accession", "percentage"]].copy()
+    opal_info.set_index("accession", inplace=True)
+    acc_set = set(opal_info.index)
 
     for filename in args.acc2taxid_files:
         if not acc_set: break
@@ -44,18 +45,16 @@ def get_taxid(gather_csv, acc2taxid_files):
                     print('... read {} lines of {}; found {} of {}'.format(n, filename, m, m + len(acc_set)), end='\r')
 
                 try:
-                    acc, _, taxid, _ = line.split()
+                    acc, acc_version, taxid, _ = line.split()
                 except ValueError:
                     print('ignoring line', (line,))
                     continue
 
-                if acc in acc_set:
-                    # not currently working
-                    import pdb;pdb.set_trace()
+                if acc_version in acc_set:
 
                     m += 1
-                    opal_info[acc]["taxid"]= taxid
-                    acc_set.remove(acc)
+                    opal_info.loc[acc_version, "taxid"] = str(taxid)
+                    acc_set.remove(acc_version)
 
                     if not acc_set:
                         break
@@ -64,44 +63,61 @@ def get_taxid(gather_csv, acc2taxid_files):
     else:
         print('found all {} accessions!'.format(m))
 
-    #hacky for now
-    opal_info.to_csv("opal_info.csv")
     return opal_info
 
-def get_row_lineage(row, taxfoo, want_taxonomy):
-    # maybe use expand to add the columns
-    lin_dict = taxfoo.get_lineage_as_dict(row['taxid'], want_taxonomy)
-    for rank in want_taxonomy:
-        name = lin_dict.get(rank, '')
-        row[rank] = name
+def get_row_taxpath(row, taxo, ranks):
+    # uses taxonomy pkg
+    lineage = taxo.lineage(str(int(row["taxid"])))[:-2]
+    lineage = [l for l in lineage if taxo.rank(l.lower()) in ranks]
+    row["rank"] = "species"
+    row["taxpath"] = "|".join(reversed(lineage))
+    tax_names = [taxo.name(taxon) for taxon in lineage]
+    row["taxpathsn"] = "|".join(reversed(tax_names))
     return row
 
+def summarize_all_levels(df, ranks):
+    new_rows = []
+    for (percentage, _, _, taxpath, taxpathsn) in df.itertuples(index=False, name=None):
+        lineage_values = taxpath.split("|")
+        lineage_names = taxpathsn.split("|")
+        for i, (rank, tax_id) in enumerate(zip(ranks[:-1], lineage_values), 1):
+            taxpath = "|".join(lineage_values[:i])
+            taxpathsn = "|".join(lineage_names[:i])
+            new_rows.append([percentage, tax_id, rank, taxpath, taxpathsn])
 
-def get_lineage(opal_info, nodes_dmp, names_dmp):
-    want_taxonomy = ['superkingdom', 'phylum', 'class', 'order', 'family', 'genus', 'species', 'strain']
-    taxfoo = ncbi_taxdump_utils.NCBI_TaxonomyFoo()
-    taxfoo.load_nodes_dmp(nodes_dmp)
-    taxfoo.load_names_dmp(names_dmp)
-    opal_info.apply(lambda row: get_row_lineage(row, taxfoo, want_taxonomy), axis=1)
-    return opal_info
+    new_df = pd.DataFrame(new_rows, columns=df.columns)
+    return new_df.groupby(
+        ['taxid', 'rank', 'taxpath', 'taxpathsn'], as_index=False
+    ).sum()
 
 
-def main(gather_csv, acc2taxid_files, nodes_dmp, names_dmp, acc_info=None):
-    if acc_info:
-        opal_info = pd.read_csv(acc_info)
-    else:
+def main(gather_csv, acc2taxid_files, taxdump, opal_csv=None, taxid_csv=None):
+    if not taxid_csv:
         opal_info = get_taxid(gather_csv, acc2taxid_files)
+        taxid_csv = gather_csv.rsplit(".csv")[0] + "_taxid.csv"
+        opal_info.to_csv(taxid_csv)
+    else:
+        opal_info = pd.read_csv(taxid_csv, index_col=0)
 
-    opal_info = get_lineage(opal_info, nodes_dmp, names_dmp)
+    # load ncbi taxonomy info
+    taxo = taxonomy.Taxonomy.from_ncbi(os.path.join(taxdump, "nodes.dmp"), os.path.join(taxdump, "names.dmp"))
+
+    # get lineage using taxid
+    tax_ranks = "superkingdom|phylum|class|order|family|genus|species".split("|")
+    tax_df = opal_info.apply(lambda row: get_row_taxpath(row, taxo, tax_ranks), axis=1)
+
+    #summarize taxonomic ranks
+    rank_df = summarize_all_levels(tax_df, tax_ranks)
+    if not opal_csv:
+        opal_csv = gather_csv.rsplit(".csv")[0] + "_opal.csv"
+    rank_df.to_csv(opal_csv, index=False)
 
 if __name__ == '__main__':
     p = argparse.ArgumentParser()
     p.add_argument('gather_csv')
     p.add_argument('--acc2taxid_files', nargs='+')
-    p.add_argument('--nodes_dmp', default="taxdump/nodes_dmp")
-    p.add_argument('--names_dmp', default="taxdump/names_dmp")
-    p.add_argument('--acc_info') #, default="opal_info.csv")
-    p.add_argument('-o', '--output', type=argparse.FileType('wt'))
+    p.add_argument('--taxdump_path', default="taxdump")
+    p.add_argument('--taxid_csv') #testing, default="example_output_taxid.csv")
+    p.add_argument('--opal_csv')
     args = p.parse_args()
-
-    main(args.gather_csv, args.acc2taxid_files, args.nodes_dmp, args.names_dmp, args.acc_info)
+    main(args.gather_csv, args.acc2taxid_files, args.taxdump_path, args.opal_csv, args.taxid_csv)
