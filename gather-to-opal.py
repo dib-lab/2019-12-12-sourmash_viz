@@ -76,15 +76,22 @@ def get_taxid(gather_csv, acc2taxid_files):
 
 def get_row_taxpath(row, taxo, ranks):
     # uses taxonomy pkg
-    try:
-        lineage = taxo.lineage(str(int(row["taxid"])))[:-2]
-    except ValueError:
-        return
+    lineage = taxo.lineage(str(int(row["taxid"])))
+    valid_ranks = {}
+    for l in lineage:
+        current_rank = taxo.rank(l)
+        if current_rank in ranks:
+            valid_ranks[current_rank] = l
 
-    # lineage = [l for l in lineage if taxo.rank(l.lower()) in ranks]
-    lineage.pop(-2)
+    final_lineage = []
+    for rank in ranks:
+        if rank in valid_ranks:
+            final_lineage.append(valid_ranks[rank])
+        else:
+            final_lineage.append("")
+
     row["rank"] = "species"
-    row["taxpath"] = "|".join(reversed(lineage))
+    row["taxpath"] = "|".join(final_lineage)
     return row
 
 
@@ -93,12 +100,13 @@ def summarize_all_levels(df, ranks):
     for (percentage, tax_id, rank, taxpath) in df.itertuples(index=False, name=None):
         new_rows.append([percentage, int(tax_id), rank, taxpath])
 
-        if taxpath is None:
-            continue
         lineage_values = taxpath.split("|")
         for i, (rank, tax_id) in enumerate(zip(ranks, lineage_values), 1):
+            if not tax_id:
+                continue
+
             taxpath = "|".join(lineage_values[:i])
-            new_rows.append([percentage, int(tax_id), rank, taxpath])
+            new_rows.append([percentage, tax_id, rank, taxpath])
 
     new_df = pd.DataFrame(new_rows, columns=df.columns)
     return new_df.groupby(["taxid", "rank", "taxpath"], as_index=False).sum()
