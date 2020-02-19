@@ -29,10 +29,16 @@ rule make_taxid:
         "nucl_gb.accession2taxid.gz",
         "nucl_wgs.accession2taxid.gz",
         "taxdump/nodes.dmp",
-        "taxdump/names.dmp"
+        "taxdump/names.dmp",
+        "{name}_taxid.csv",
     output:
         "{name}.profile"
-    shell:
-        "./opal_report.py {wildcards.name} {input[0]} {input[1]} {input[2]}"
-
-#        "./make-lineage-csv.py taxdump/{{nodes.dmp,names.dmp}} {input[0]} -o {output}"
+    conda: "envs/taxonomy.yml"
+    shell: """
+      ./gather-to-opal.py --acc2taxid_files {input[1]} \
+                          --acc2taxid_files {input[2]} \
+                          --taxdump_path `dirname {input[3]}` \
+                          --taxid_csv {input[5]} \
+                          --opal_csv {output} \
+                          {input[0]}
+    """
