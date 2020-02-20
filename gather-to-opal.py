@@ -14,7 +14,6 @@ import argparse
 import pandas as pd
 
 import taxonomy
-import ncbi_taxdump_utils
 
 
 def get_taxid(gather_csv, acc2taxid_files):
@@ -129,7 +128,9 @@ def gen_report(sample_id, ranks, taxonomy_id, program, taxons):
     return output + "\n".join(all_taxons)
 
 
-def main(gather_csv, acc2taxid_files, taxdump, opal_csv=None, taxid_csv=None):
+def main(
+    gather_csv, acc2taxid_files, taxdump, tax_ranks, *, opal_csv=None, taxid_csv=None
+):
     if not taxid_csv:
         opal_info = get_taxid(gather_csv, acc2taxid_files)
         taxid_csv = gather_csv.rsplit(".csv")[0] + "_taxid.csv"
@@ -143,19 +144,17 @@ def main(gather_csv, acc2taxid_files, taxdump, opal_csv=None, taxid_csv=None):
     )
 
     # get lineage using taxid
-    tax_ranks = "superkingdom|phylum|class|order|family|genus|species".split("|")
     tax_df = opal_info.apply(lambda row: get_row_taxpath(row, taxo, tax_ranks), axis=1)
 
     # summarize taxonomic ranks
     rank_df = summarize_all_levels(tax_df, tax_ranks)
     if not opal_csv:
         opal_csv = gather_csv.rsplit(".csv")[0] + "_opal.csv"
-    # rank_df.to_csv(opal_csv, index=False)
+
     sample_id = "test"
     taxonomy_id = "taxonomy_id"
-    out = gen_report(
-        sample_id, "|".join(tax_ranks), taxonomy_id, "sourmash gather", rank_df
-    )
+    program = "sourmash gather"
+    out = gen_report(sample_id, "|".join(tax_ranks), taxonomy_id, program, rank_df)
     with open(opal_csv, "w") as f:
         f.write(out)
 
@@ -165,6 +164,9 @@ if __name__ == "__main__":
     p.add_argument("gather_csv")
     p.add_argument("--acc2taxid_files", action="append")
     p.add_argument("--taxdump_path", default="taxdump")
+    p.add_argument(
+        "--ranks", default="superkingdom|phylum|class|order|family|genus|species"
+    )
     p.add_argument("--taxid_csv")  # testing, default="example_output_taxid.csv")
     p.add_argument("--opal_csv")
     args = p.parse_args()
@@ -172,6 +174,7 @@ if __name__ == "__main__":
         args.gather_csv,
         args.acc2taxid_files,
         args.taxdump_path,
-        args.opal_csv,
-        args.taxid_csv,
+        args.ranks.split("|"),
+        opal_csv=args.opal_csv,
+        taxid_csv=args.taxid_csv,
     )
