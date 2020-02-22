@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 """
 Take a gather CSV and one or more NCBI 'accession2taxid' files
 and create 1) csv containing accessions, taxid, and 2) csv with linage, %
@@ -125,7 +125,8 @@ def gen_report(sample_id, ranks, taxonomy_id, program, taxons):
         tax_line = "\t".join(str(t) for t in tax)
         all_taxons.append(tax_line)
 
-    return output + "\n".join(all_taxons)
+    out = output + "\n".join(all_taxons)
+    return out + "\n"
 
 
 def main(
@@ -137,6 +138,10 @@ def main(
         opal_info.to_csv(taxid_csv)
     else:
         opal_info = pd.read_csv(taxid_csv, index_col=0)
+
+    # Drop tax_ids not found. There is a warning already on the `get_taxid`
+    # function, but might want to be more eloquent...
+    opal_info.dropna(subset=["taxid"], inplace=True)
 
     # load ncbi taxonomy info
     taxo = taxonomy.Taxonomy.from_ncbi(
