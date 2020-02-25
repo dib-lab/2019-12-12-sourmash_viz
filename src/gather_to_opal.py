@@ -3,24 +3,30 @@
 Take a gather CSV and one or more NCBI 'accession2taxid' files
 and create 1) csv containing accessions, taxid, and 2) csv with linage, %
 run:
-python gather-to-opal.py example_output.csv --acc2taxid_files nucl_gb.accession2taxid.gz nucl_wgs.accession2taxid.gz
+```
+python gather-to-opal.py example_output.csv \
+    --acc2taxid_files nucl_gb.accession2taxid.gz \
+    --acc2taxid_filesnucl_wgs.accession2taxid.gz
+```
 """
 
 from __future__ import print_function
-import re
-import os
-import gzip
-import argparse
-import pandas as pd
 
+import argparse
+import gzip
+import os
+
+import pandas as pd
 import taxonomy
+
+__version__ = "0.1.0"
 
 
 def get_taxid(gather_csv, acc2taxid_files):
 
     gather_info = pd.read_csv(gather_csv)
     # grab the acc from gather column `name`
-    gather_info["accession"] = gather_info["name"].str.replace("\..*", "")
+    gather_info["accession"] = gather_info["name"].str.replace(r"\..*", "")
     gather_info["percentage"] = gather_info["f_unique_weighted"] * 100
     m = 0
     # init opal_info df
@@ -37,7 +43,7 @@ def get_taxid(gather_csv, acc2taxid_files):
             xopen = gzip.open
 
         with xopen(filename, "rt") as fp:  # ruun through acc2taxid files
-            next(fp)  #  skip headers
+            next(fp)  # skip headers
             for n, line in enumerate(fp):
                 if not acc_set:
                     break
@@ -129,7 +135,7 @@ def gen_report(sample_id, ranks, taxonomy_id, program, taxons):
     return out + "\n"
 
 
-def main(
+def gather_to_opal(
     gather_csv, acc2taxid_files, taxdump, tax_ranks, *, opal_csv=None, taxid_csv=None
 ):
     if not taxid_csv:
@@ -164,7 +170,7 @@ def main(
         f.write(out)
 
 
-if __name__ == "__main__":
+def main():
     p = argparse.ArgumentParser()
     p.add_argument("gather_csv")
     p.add_argument("--acc2taxid_files", action="append")
@@ -175,7 +181,7 @@ if __name__ == "__main__":
     p.add_argument("--taxid_csv")  # testing, default="example_output_taxid.csv")
     p.add_argument("--opal_csv")
     args = p.parse_args()
-    main(
+    gather_to_opal(
         args.gather_csv,
         args.acc2taxid_files,
         args.taxdump_path,
@@ -183,3 +189,7 @@ if __name__ == "__main__":
         opal_csv=args.opal_csv,
         taxid_csv=args.taxid_csv,
     )
+
+
+if __name__ == "__main__":
+    main()
