@@ -35,7 +35,7 @@ rule make_taxid:
         "{name}.profile"
     conda: "envs/taxonomy.yml"
     shell: """
-      ./gather-to-opal.py --acc2taxid_files {input[1]} \
+      ./gather_to_opal.py --acc2taxid_files {input[1]} \
                           --acc2taxid_files {input[2]} \
                           --taxdump_path `dirname {input[3]}` \
                           --taxid_csv {input[5]} \

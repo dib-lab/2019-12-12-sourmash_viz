@@ -1,0 +1,10 @@
+[build-system]
+requires = ["flit_core >=2,<3"]
+build-backend = "flit_core.buildapi"
+
+[tool.flit.metadata]
+module = "gather_to_opal"
+author = "Luiz Irber"
+author-email = "sourmash@luizirber.org"
+home-page = "https://github.com/dib-lab/2019-12-12-sourmash_viz"
+classifiers = ["License :: OSI Approved :: BSD License"]
