@@ -33,6 +33,24 @@ def test_get_row_taxpath():
     assert tax_df.loc["BAHQ02000907"]["taxpath"] == "2|1239|186801|186802|||1232439"
 
 
+def test_get_row_taxpath_strain():
+    tax_ranks = "superkingdom|phylum|class|order|family|genus|species|strain".split("|")
+
+    test_data = [{"accession": "strain", "percentage": 2.928177, "taxid": 547042}]
+
+    test_df = pd.DataFrame(test_data).set_index("accession")
+
+    tax_df = test_df.astype(object).apply(
+        lambda row: get_row_taxpath(row, taxo, tax_ranks), axis=1
+    )
+
+    assert len(tax_df) == 1
+    assert tax_df.loc["strain"]["rank"] == "strain"
+    assert (
+        tax_df.loc["strain"]["taxpath"] == "2|976|200643|171549|815|816|387090|547042"
+    )
+
+
 def test_summarize_all_levels():
     tax_ranks = "superkingdom|phylum|class|order|family|genus|species".split("|")
 
@@ -76,7 +94,9 @@ def test_summarize_all_levels_strain():
 
     summary_df.set_index("taxid", inplace=True)
 
+    # one item for each rank in the lineage, except for strain (which has two)
     assert len(summary_df) == 9
+
     assert summary_df.loc["2"]["percentage"] == 6
     assert summary_df.loc["1531"]["percentage"] == 6
     assert len(summary_df[summary_df["rank"] == "species"]) == 1
@@ -99,7 +119,10 @@ def test_summarize_all_levels_subspecies():
 
     summary_df.set_index("taxid", inplace=True)
 
+    # since subspecies is not in tax_ranks, summary_df will have 7 items,
+    # one for each level of the lineage (except strain)
     assert len(summary_df) == 7
+
     assert summary_df.loc["2"]["percentage"] == 2
     assert summary_df.loc["2371"]["percentage"] == 2
     assert len(summary_df[summary_df["rank"] == "species"]) == 1

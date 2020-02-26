@@ -81,7 +81,19 @@ def get_taxid(gather_csv, acc2taxid_files):
 
 def get_row_taxpath(row, taxo, ranks):
     current_taxid = str(row["taxid"])
-    current_rank = taxo.rank(current_taxid)
+    try:
+        current_rank = taxo.rank(current_taxid)
+    except Exception as e:
+        # pyo3 doesn't export Exceptions properly, so doing this for now...
+        if "TaxonomyError" in repr(e):
+            print(e)
+            # a TaxonomyError is raised when the taxid is not in the taxonomy.
+            # Skipping row for now, and not setting 'taxpath' means it needs to
+            # be filtered out later.
+            return
+        else:
+            raise
+
     if current_rank == "no rank":
         # need to figure out based on parent
         parent = taxo.parent(current_taxid)
@@ -94,6 +106,9 @@ def get_row_taxpath(row, taxo, ranks):
             # it might be a species-like rank,
             # but we should leave empty for OPAL
             row["rank"] = "no rank"
+        elif parent_rank == "subspecies":
+            # we have a strain
+            row["rank"] = "strain"
         else:
             raise Exception("TODO other ranks testing for parent")
     elif current_rank == "species":
@@ -131,6 +146,11 @@ def get_row_taxpath(row, taxo, ranks):
 def summarize_all_levels(df, ranks):
     new_rows = []
     for (percentage, tax_id, rank, taxpath) in df.itertuples(index=False, name=None):
+        if not taxpath:
+            # no taxpath means tax_id couldn't be found in the taxonomy,
+            # and so it's empty. Dropping it for now.
+            continue
+
         lineage_values = taxpath.split("|")
         for i, (rank, tax_id) in enumerate(zip(ranks, lineage_values), 1):
             if not tax_id:
