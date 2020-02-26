@@ -103,8 +103,6 @@ def get_row_taxpath(row, taxo, ranks):
 def summarize_all_levels(df, ranks):
     new_rows = []
     for (percentage, tax_id, rank, taxpath) in df.itertuples(index=False, name=None):
-        new_rows.append([percentage, int(tax_id), rank, taxpath])
-
         lineage_values = taxpath.split("|")
         for i, (rank, tax_id) in enumerate(zip(ranks, lineage_values), 1):
             if not tax_id:

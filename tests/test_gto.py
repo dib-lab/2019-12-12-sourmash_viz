@@ -42,10 +42,12 @@ def test_summarize_all_levels():
 
     tax_df = test_df.apply(lambda row: get_row_taxpath(row, taxo, tax_ranks), axis=1)
 
-    summary_df_all = summarize_all_levels(tax_df, tax_ranks)
-    summary_df = summary_df_all.set_index("taxid")
+    summary_df = summarize_all_levels(tax_df, tax_ranks)
 
-    assert len(summary_df) == len(summary_df_all)
+    assert len(summary_df) == len(summary_df["taxid"].unique())
 
-    assert len(summary_df) == 10
+    summary_df.set_index("taxid", inplace=True)
+
+    assert len(summary_df) == 8
     assert summary_df.loc["2"]["percentage"] == 6
+    assert len(summary_df[summary_df["rank"] == "species"]) == 2
