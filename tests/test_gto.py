@@ -80,3 +80,26 @@ def test_summarize_all_levels_strain():
     assert summary_df.loc["2"]["percentage"] == 6
     assert summary_df.loc["1531"]["percentage"] == 6
     assert len(summary_df[summary_df["rank"] == "species"]) == 1
+
+
+def test_summarize_all_levels_subspecies():
+    tax_ranks = "superkingdom|phylum|class|order|family|genus|species|strain".split("|")
+
+    test_data = [
+        {"accession": "subspecies", "percentage": 2, "taxid": 644357},
+    ]
+
+    test_df = pd.DataFrame(test_data).set_index("accession")
+
+    tax_df = test_df.apply(lambda row: get_row_taxpath(row, taxo, tax_ranks), axis=1)
+
+    summary_df = summarize_all_levels(tax_df, tax_ranks)
+
+    assert len(summary_df) == len(summary_df["taxid"].unique())
+
+    summary_df.set_index("taxid", inplace=True)
+
+    assert len(summary_df) == 7
+    assert summary_df.loc["2"]["percentage"] == 2
+    assert summary_df.loc["2371"]["percentage"] == 2
+    assert len(summary_df[summary_df["rank"] == "species"]) == 1

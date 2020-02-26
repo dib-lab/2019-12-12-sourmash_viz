@@ -86,6 +86,7 @@ def get_row_taxpath(row, taxo, ranks):
         # need to figure out based on parent
         parent = taxo.parent(current_taxid)
         parent_rank = taxo.rank(parent)
+
         if parent_rank == "species":
             # we have a strain
             row["rank"] = "strain"
@@ -94,11 +95,15 @@ def get_row_taxpath(row, taxo, ranks):
             # but we should leave empty for OPAL
             row["rank"] = "no rank"
         else:
-            raise Exception("TODO other ranks testing")
+            raise Exception("TODO other ranks testing for parent")
     elif current_rank == "species":
         row["rank"] = "species"
+    elif current_rank == "subspecies":
+        # TODO: should probably drop it from profile if subspecies not in ranks,
+        # but need to do it later? (can't remove row during apply)
+        row["rank"] = "no rank"
     else:
-        raise Exception("TODO other ranks testing")
+        raise Exception("TODO other ranks testing for current")
 
     # uses taxonomy pkg
     lineage = taxo.lineage(current_taxid)
