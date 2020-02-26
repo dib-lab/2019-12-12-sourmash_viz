@@ -80,9 +80,33 @@ def get_taxid(gather_csv, acc2taxid_files):
 
 
 def get_row_taxpath(row, taxo, ranks):
+    current_taxid = str(row["taxid"])
+    current_rank = taxo.rank(current_taxid)
+    if current_rank == "no rank":
+        # need to figure out based on parent
+        parent = taxo.parent(current_taxid)
+        parent_rank = taxo.rank(parent)
+        if parent_rank == "species":
+            # we have a strain
+            row["rank"] = "strain"
+        elif parent_rank == "genus":
+            # it might be a species-like rank,
+            # but we should leave empty for OPAL
+            row["rank"] = "no rank"
+        else:
+            raise Exception("TODO other ranks testing")
+    elif current_rank == "species":
+        row["rank"] = "species"
+    else:
+        raise Exception("TODO other ranks testing")
+
     # uses taxonomy pkg
-    lineage = taxo.lineage(str(int(row["taxid"])))
+    lineage = taxo.lineage(current_taxid)
     valid_ranks = {}
+
+    if row["rank"] == "strain" and "strain" in ranks:
+        valid_ranks["strain"] = current_taxid
+
     for l in lineage:
         current_rank = taxo.rank(l)
         if current_rank in ranks:
@@ -95,7 +119,6 @@ def get_row_taxpath(row, taxo, ranks):
         else:
             final_lineage.append("")
 
-    row["rank"] = "species"
     row["taxpath"] = "|".join(final_lineage)
     return row
 
@@ -141,7 +164,9 @@ def gather_to_opal(
         taxid_csv = gather_csv.rsplit(".csv")[0] + "_taxid.csv"
         opal_info.to_csv(taxid_csv)
     else:
-        opal_info = pd.read_csv(taxid_csv, index_col=0)
+        opal_info = pd.read_csv(
+            taxid_csv, index_col=0, dtype={"percentage": "float64", "taxid": "Int64"}
+        )
 
     # Drop tax_ids not found. There is a warning already on the `get_taxid`
     # function, but might want to be more eloquent...
@@ -153,7 +178,9 @@ def gather_to_opal(
     )
 
     # get lineage using taxid
-    tax_df = opal_info.apply(lambda row: get_row_taxpath(row, taxo, tax_ranks), axis=1)
+    tax_df = opal_info.astype(object).apply(
+        lambda row: get_row_taxpath(row, taxo, tax_ranks), axis=1
+    )
 
     # summarize taxonomic ranks
     rank_df = summarize_all_levels(tax_df, tax_ranks)
@@ -174,7 +201,7 @@ def main():
     p.add_argument("--acc2taxid_files", action="append")
     p.add_argument("--taxdump_path", default="taxdump")
     p.add_argument(
-        "--ranks", default="superkingdom|phylum|class|order|family|genus|species"
+        "--ranks", default="superkingdom|phylum|class|order|family|genus|species|strain"
     )
     p.add_argument("--taxid_csv")  # testing, default="example_output_taxid.csv")
     p.add_argument("--opal_csv")
