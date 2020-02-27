@@ -7,7 +7,8 @@ and create
 
 run:
 ```bash
-python gather-to-opal.py example_output.csv \
-    --acc2taxid_files nucl_gb.accession2taxid.gz \
-    --acc2taxid_filesnucl_wgs.accession2taxid.gz
+python gather-to-opal.py example_output example_output.csv \
+    --acc2taxid nucl_gb.accession2taxid.gz \
+    --acc2taxid nucl_wgs.accession2taxid.gz \
+    --output example_output.profile
 ```

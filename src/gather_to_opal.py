@@ -1,12 +1,16 @@
 #! /usr/bin/env python3
 """
 Take a gather CSV and one or more NCBI 'accession2taxid' files
-and create 1) csv containing accessions, taxid, and 2) csv with linage, %
+and create
+  1) csv containing accessions, taxid, and
+  2) csv with lineage
+
 run:
 ```
-python gather-to-opal.py example_output.csv \
-    --acc2taxid_files nucl_gb.accession2taxid.gz \
-    --acc2taxid_filesnucl_wgs.accession2taxid.gz
+python gather-to-opal.py example_output example_output.csv \
+    --acc2taxid nucl_gb.accession2taxid.gz \
+    --acc2taxid nucl_wgs.accession2taxid.gz \
+    --output example_output.profile
 ```
 """
 
@@ -163,26 +167,37 @@ def summarize_all_levels(df, ranks):
     return new_df.groupby(["taxid", "rank", "taxpath"], as_index=False).sum()
 
 
-def gen_report(sample_id, ranks, taxonomy_id, program, taxons):
-    output = f"""# Taxonomic Profiling Output
+def gen_report(sample_id, ranks, taxons, *, taxonomy_id=None, program=None):
+    output_lines = f"""# Taxonomic Profiling Output
 @SampleID:{sample_id}
 @Version:0.10.0
 @Ranks:{ranks}
-@TaxonomyID:{taxonomy_id}
-@__program__:{program}
-@@TAXID\tRANK\tTAXPATH\tPERCENTAGE
-"""
-    all_taxons = []
+""".splitlines()
+
+    if taxonomy_id is not None:
+        output_lines.append(f"@TaxonomyID:{taxonomy_id}")
+    if program is not None:
+        output_lines.append(f"@__program__:{program}")
+    output_lines.append(f"@@TAXID\tRANK\tTAXPATH\tPERCENTAGE")
+
     for tax in taxons.itertuples(index=False, name=None):
         tax_line = "\t".join(str(t) for t in tax)
-        all_taxons.append(tax_line)
+        output_lines.append(tax_line)
 
-    out = output + "\n".join(all_taxons)
-    return out + "\n"
+    return "\n".join(output_lines)
 
 
 def gather_to_opal(
-    gather_csv, acc2taxid_files, taxdump, tax_ranks, *, opal_csv=None, taxid_csv=None
+    sample_id,
+    gather_csv,
+    acc2taxid_files,
+    taxdump,
+    tax_ranks,
+    *,
+    opal_csv=None,
+    taxid_csv=None,
+    taxonomy_id=None,
+    program=None,
 ):
     if not taxid_csv:
         opal_info = get_taxid(gather_csv, acc2taxid_files)
@@ -212,32 +227,42 @@ def gather_to_opal(
     if not opal_csv:
         opal_csv = gather_csv.rsplit(".csv")[0] + "_opal.csv"
 
-    sample_id = "test"
-    taxonomy_id = "taxonomy_id"
-    program = "sourmash gather"
-    out = gen_report(sample_id, "|".join(tax_ranks), taxonomy_id, program, rank_df)
+    out = gen_report(
+        sample_id,
+        "|".join(tax_ranks),
+        rank_df,
+        taxonomy_id=taxonomy_id,
+        program=program,
+    )
     with open(opal_csv, "w") as f:
         f.write(out)
 
 
 def main():
     p = argparse.ArgumentParser()
+    p.add_argument("sample_id")
     p.add_argument("gather_csv")
-    p.add_argument("--acc2taxid_files", action="append")
-    p.add_argument("--taxdump_path", default="taxdump")
+    p.add_argument("--acc2taxid", action="append")
+    p.add_argument("--taxdump", default="taxdump")
     p.add_argument(
         "--ranks", default="superkingdom|phylum|class|order|family|genus|species|strain"
     )
     p.add_argument("--taxid_csv")  # testing, default="example_output_taxid.csv")
-    p.add_argument("--opal_csv")
+    p.add_argument("-o", "--output")
+    p.add_argument("--taxonomy_id")
+    p.add_argument("--program", default="sourmash gather")
+
     args = p.parse_args()
     gather_to_opal(
+        args.sample_id,
         args.gather_csv,
-        args.acc2taxid_files,
-        args.taxdump_path,
+        args.acc2taxid,
+        args.taxdump,
         args.ranks.split("|"),
-        opal_csv=args.opal_csv,
+        opal_csv=args.output,
         taxid_csv=args.taxid_csv,
+        taxonomy_id=args.taxonomy_id,
+        program=args.program,
     )
 
 
