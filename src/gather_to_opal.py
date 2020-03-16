@@ -26,19 +26,54 @@ import taxonomy
 __version__ = "0.1.0"
 
 
-def get_taxid(gather_csv, acc2taxid_files):
+def taxid4index(index, acc2taxids, output):
+    index = load_index(index)
 
-    gather_info = pd.read_csv(gather_csv)
-    # grab the acc from gather column `name`
-    gather_info["accession"] = gather_info["name"].str.replace(r"\..*", "")
-    gather_info["percentage"] = gather_info["f_unique_weighted"] * 100
+    acc_set = set()
+    for sig in index.signatures():
+        acc = sig.name().split()[0].split(".")[0]
+        acc_set.add(acc)
+
+        if acc.startswith("NZ_"):
+            acc_set.add(acc[3:])
+
+    matches = matches_for_acc2taxids(acc_set, acc2taxids)
+
+    if output:
+        sr = pd.Series(matches)
+        sr.columns = ("acc", "taxid")
+        sr.to_csv(output)
+
+    return matches
+
+
+def load_index(filename):
+    import sourmash
+
+    index = None
+    try:
+        index = sourmash.load_sbt_index(filename)
+    except (ValueError, EnvironmentError):
+        pass
+
+    if index is None:
+        try:
+            index = sourmash.lca.lca_utils.LCA_Database()
+            index.load(filename)
+        except (ValueError, EnvironmentError, TypeError):
+            pass
+
+    if index is None:
+        # TODO: raise error
+        pass
+
+    return index
+
+
+def matches_for_acc2taxids(acc_set, acc2taxids):
     m = 0
-    # init opal_info df
-    opal_info = gather_info.loc[:, ["accession", "percentage"]].copy()
-    opal_info.set_index("accession", inplace=True)
-    acc_set = set(opal_info.index)
-
-    for filename in acc2taxid_files:
+    matches = {}
+    for filename in acc2taxids:
         if not acc_set:
             break
 
@@ -68,17 +103,54 @@ def get_taxid(gather_csv, acc2taxid_files):
                     continue
 
                 if acc in acc_set:
-
                     m += 1
-                    opal_info.loc[acc, "taxid"] = str(taxid)
+                    matches[acc] = str(taxid)
                     acc_set.remove(acc)
 
                     if not acc_set:
                         break
+
     if acc_set:
         print("failed to find {} acc: {}".format(len(acc_set), acc_set))
     else:
         print("found all {} accessions!".format(m))
+
+    return matches
+
+
+def get_taxid(gather_csv, acc2taxid_files, taxid4index):
+    gather_info = pd.read_csv(gather_csv)
+    # grab the acc from gather column `name`
+    gather_info["accession"] = gather_info["name"].str.replace(r"\..*", "")
+    gather_info["percentage"] = gather_info["f_unique_weighted"] * 100
+
+    # init opal_info df
+    opal_info = gather_info.loc[:, ["accession", "percentage"]].copy()
+    opal_info.set_index("accession", inplace=True)
+    acc_set = set(opal_info.index)
+
+    if taxid4index:
+        taxids = pd.read_csv(taxid4index, names=("acc", "taxid"))
+        taxids.set_index("acc", inplace=True)
+        matches = {}
+        not_found = set()
+        for acc in acc_set:
+            taxid = None
+            try:
+                taxid = taxids.loc[acc]
+            except KeyError:
+                not_found.add(acc)
+            else:
+                matches[acc] = taxid
+        if not_found:
+            print("failed to find {} acc: {}".format(len(not_found), not_found))
+        else:
+            print("found all {} accessions!".format(len(matches)))
+    else:
+        matches = matches_for_acc2taxids(acc_set, acc2taxid_files)
+
+    for acc, taxid in matches.items():
+        opal_info.loc[acc, "taxid"] = str(taxid["taxid"])
 
     return opal_info
 
@@ -190,23 +262,16 @@ def gen_report(sample_id, ranks, taxons, *, taxonomy_id=None, program=None):
 def gather_to_opal(
     sample_id,
     gather_csv,
-    acc2taxid_files,
     taxdump,
     tax_ranks,
     *,
+    acc2taxid=None,
+    taxid4index=None,
     opal_csv=None,
-    taxid_csv=None,
     taxonomy_id=None,
     program=None,
 ):
-    if not taxid_csv:
-        opal_info = get_taxid(gather_csv, acc2taxid_files)
-        taxid_csv = gather_csv.rsplit(".csv")[0] + "_taxid.csv"
-        opal_info.to_csv(taxid_csv)
-    else:
-        opal_info = pd.read_csv(
-            taxid_csv, index_col=0, dtype={"percentage": "float64", "taxid": "Int64"}
-        )
+    opal_info = get_taxid(gather_csv, acc2taxid, taxid4index)
 
     # Drop tax_ids not found. There is a warning already on the `get_taxid`
     # function, but might want to be more eloquent...
@@ -238,32 +303,50 @@ def gather_to_opal(
         f.write(out)
 
 
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("sample_id")
-    p.add_argument("gather_csv")
-    p.add_argument("--acc2taxid", action="append")
-    p.add_argument("--taxdump", default="taxdump")
-    p.add_argument(
-        "--ranks", default="superkingdom|phylum|class|order|family|genus|species|strain"
-    )
-    p.add_argument("--taxid_csv")  # testing, default="example_output_taxid.csv")
-    p.add_argument("-o", "--output")
-    p.add_argument("--taxonomy_id")
-    p.add_argument("--program", default="sourmash gather")
-
-    args = p.parse_args()
+def gather_to_cami_main(args):
     gather_to_opal(
         args.sample_id,
         args.gather_csv,
-        args.acc2taxid,
         args.taxdump,
         args.ranks.split("|"),
+        taxid4index=args.taxid4index,
+        acc2taxid=args.acc2taxid,
         opal_csv=args.output,
-        taxid_csv=args.taxid_csv,
         taxonomy_id=args.taxonomy_id,
         program=args.program,
     )
+
+
+def tx4idx_main(args):
+    taxid4index(args.index, args.acc2taxid, args.output)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    subp = parser.add_subparsers()
+
+    profile = subp.add_parser("profile")
+    profile.add_argument("sample_id")
+    profile.add_argument("gather_csv")
+    profile.add_argument("--acc2taxid", action="append")
+    profile.add_argument("--taxid4index", type=str)
+    profile.add_argument("--taxdump", default="taxdump")
+    profile.add_argument(
+        "--ranks", default="superkingdom|phylum|class|order|family|genus|species|strain"
+    )
+    profile.add_argument("-o", "--output")
+    profile.add_argument("--taxonomy_id")
+    profile.add_argument("--program", default="sourmash gather")
+    profile.set_defaults(func=gather_to_cami_main)
+
+    tx4idx = subp.add_parser("taxid4index")
+    tx4idx.add_argument("index")
+    tx4idx.add_argument("--acc2taxid", action="append")
+    tx4idx.add_argument("--output")
+    tx4idx.set_defaults(func=tx4idx_main)
+
+    args = parser.parse_args()
+    args.func(args)
 
 
 if __name__ == "__main__":

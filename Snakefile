@@ -30,16 +30,17 @@ rule make_taxid:
         "nucl_wgs.accession2taxid.gz",
         "taxdump/nodes.dmp",
         "taxdump/names.dmp",
-        "{name}_taxid.csv",
+        "taxid4index.csv",
     output:
         "{name}.profile"
     conda: "envs/taxonomy.yml"
     shell: """
-      ./src/gather_to_opal.py --acc2taxid {input[1]} \
-                          --acc2taxid {input[2]} \
-                          --taxdump `dirname {input[3]}` \
-                          --taxid_csv {input[5]} \
-                          --output {output} \
-                          {wildcards.name} \
-                          {input[0]}
+      ./src/gather_to_opal.py profile \
+          --taxid4index {input[5]} \
+          --acc2taxid {input[1]} \
+          --acc2taxid {input[2]} \
+          --taxdump `dirname {input[3]}` \
+          --output {output} \
+          {wildcards.name} \
+          {input[0]}
     """
