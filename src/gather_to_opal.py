@@ -34,7 +34,7 @@ def taxid4index(index, acc2taxids, output):
         acc = sig.name().split()[0].split(".")[0]
         acc_set.add(acc)
 
-        if acc.startswith("NZ_"):
+        if acc.startswith("NZ_") or acc.startswith("NC_"):
             acc_set.add(acc[3:])
 
     matches = matches_for_acc2taxids(acc_set, acc2taxids)
@@ -185,8 +185,15 @@ def get_row_taxpath(row, taxo, ranks):
         elif parent_rank == "subspecies":
             # we have a strain
             row["rank"] = "strain"
-        else:
-            raise Exception("TODO other ranks testing for parent")
+        elif parent_rank == "no rank":
+            # seen this with taxid 1620419, which has lineage
+            # no rank|no rank|subspecies|species|genus|family|order|class|phylum|superkingdom
+            parent = taxo.parent(parent)
+            parent_rank = taxo.rank(parent)
+            if parent_rank in ("species", "subspecies"):
+                row["rank"] = "strain"
+            else:
+                raise Exception("TODO other ranks testing for parent")
     elif current_rank == "species":
         row["rank"] = "species"
     elif current_rank == "subspecies":
