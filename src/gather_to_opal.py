@@ -7,7 +7,7 @@ and create
 
 run:
 ```
-python gather-to-opal.py example_output example_output.csv \
+python gather_to_opal.py example_output example_output.csv \
     --acc2taxid nucl_gb.accession2taxid.gz \
     --acc2taxid nucl_wgs.accession2taxid.gz \
     --output example_output.profile
